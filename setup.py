@@ -83,7 +83,6 @@ def gen_build_version():
     config.set("cobbler", "gitstamp", gitstamp)
     config.set("cobbler", "builddate", builddate)
     config.set("cobbler", "version", VERSION)
-    print(VERSION)
     config.set("cobbler", "version_tuple", str([x for x in VERSION.split(".")]))
     config.write(fd)
     fd.close()
@@ -239,7 +238,7 @@ class build_cfg(Command):
             shutil.copymode(infile, outfile)
 
     def substitute_values(self, string, values):
-        for name, val in values.iteritems():
+        for name, val in values.items():
             # print("replacing @@%s@@ with %s" % (name, val))
             string = string.replace("@@%s@@" % (name), val)
         return string
@@ -348,7 +347,7 @@ class install(_install):
                         os.lchown(os.path.join(root, dirname), user.pw_uid, -1)
                     for filename in files:
                         os.lchown(os.path.join(root, filename), user.pw_uid, -1)
-        except exceptions.OSError as e:
+        except OSError as e:
             # We only check for errno = 1 (EPERM) here because its kinda
             # expected when installing as a non root user.
             if e.errno == 1:
