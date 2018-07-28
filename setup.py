@@ -12,11 +12,10 @@ from distutils.command.build_py import build_py as _build_py
 from distutils import log
 from distutils import dep_util
 from distutils.dist import Distribution as _Distribution
-from ConfigParser import ConfigParser
+from configparser import ConfigParser
 
 import codecs
 import unittest
-import exceptions
 import pwd
 import shutil
 import subprocess
@@ -73,7 +72,7 @@ def gen_build_version():
     else:
         cmd = subprocess.Popen([gitloc, "log", "--format=%h%n%ad", "-1"],
                                stdout=subprocess.PIPE)
-        data = cmd.communicate()[0].strip()
+        data = cmd.communicate()[0].strip().decode("utf-8")
         if cmd.returncode == 0:
             gitstamp, gitdate = data.split("\n")
 
@@ -84,7 +83,8 @@ def gen_build_version():
     config.set("cobbler", "gitstamp", gitstamp)
     config.set("cobbler", "builddate", builddate)
     config.set("cobbler", "version", VERSION)
-    config.set("cobbler", "version_tuple", [int(x) for x in VERSION.split(".")])
+    print(VERSION)
+    config.set("cobbler", "version_tuple", str([x for x in VERSION.split(".")]))
     config.write(fd)
     fd.close()
 
@@ -364,7 +364,7 @@ class install(_install):
         path = os.path.join(self.install_data, 'share/cobbler/web')
         try:
             self.change_owner(path, http_user)
-        except KeyError, e:
+        except KeyError as e:
             # building RPMs in a mock chroot, user 'apache' won't exist
             log.warn("Error in 'chown apache %s': %s" % (path, e))
         if not os.path.abspath(libpath):
@@ -373,7 +373,7 @@ class install(_install):
         path = os.path.join(self.root + libpath, 'webui_sessions')
         try:
             self.change_owner(path, http_user)
-        except KeyError, e:
+        except KeyError as e:
             log.warn("Error in 'chown apache %s': %s" % (path, e))
 
 
@@ -515,11 +515,11 @@ def parse_os_release():
     out = {}
     osreleasepath = "/etc/os-release"
     if os.path.exists(osreleasepath):
-        with open(osreleasepath, 'rb') as os_release:
+        with open(osreleasepath, 'r') as os_release:
             out.update(
                 map(
                     lambda line: [it.strip('"\n') for it in line.split('=', 1)],
-                    [line for line in os_release.xreadlines() if not line.startswith('#') and '=' in line]
+                    [line for line in os_release if not line.startswith('#') and '=' in line]
                 )
             )
     return out
