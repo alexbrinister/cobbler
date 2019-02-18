@@ -23,15 +23,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 02110-1301  USA
 """
 
+from builtins import range
+from builtins import object
 import glob
 import os
 import re
 import time
 
-from cexceptions import CX
-import clogger
-import templar
-import utils
+from .cexceptions import CX
+from . import clogger
+from . import templar
+from . import utils
 
 
 def get_power_types():
@@ -85,7 +87,7 @@ def get_power_command(power_type):
     return None
 
 
-class PowerManager:
+class PowerManager(object):
     """
     Handles power management in systems
     """
@@ -167,7 +169,7 @@ class PowerManager:
                 # If the desired state is actually a query for the status
                 # return different information than command return code
                 if power_operation == 'status':
-                    match = re.match('^(Status:|.+power\s=)\s(on|off)$', output, re.IGNORECASE | re.MULTILINE)
+                    match = re.match(r'^(Status:|.+power\s=)\s(on|off)$', output, re.IGNORECASE | re.MULTILINE)
                     if match:
                         power_status = match.groups()[1]
                         if power_status.lower() == 'on':

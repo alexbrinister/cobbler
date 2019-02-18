@@ -1,13 +1,32 @@
 language: python
 python:
- - "2.7"
+ - "3.6"
 branches:
  only:
   - master
-  - release28
-before_install:
- - sudo apt-get update -qq
- - sudo apt-get install -y python-all python-cheetah python-yaml git-core python-setuptools python-netaddr python-nose python-simplejson pyflakes pep8
+addons:
+  apt:
+   packages:
+    - python3-pip
+    - apache2
+    - apache2-dev
+    - acl
+    - libapache2-mod-wsgi-py3
+    - ipmitool
+    - rsync
+    - fence-agents
+    - genders
+    # mkisofs is not available on ubuntu
+    - genisoimage
 install:
- - "/bin/true"
-script: make qa
+ # Disable venv and use root for installation.
+ - deactivate
+ - sudo pip3 install --upgrade pip
+ - sudo pip3 install --upgrade --force-reinstall setuptools
+ - sudo pip3 install -r requirements-test.txt --ignore-installed six
+ - sudo python3 setup.py build
+ - sudo python3 setup.py install
+before_script:
+ - pyflakes *.py cobbler/*.py cobbler/modules/*.py cobbler/web/*.py cobbler/web/templatetags/*.py bin/cobbler* bin/*.py web/cobbler.wsgi
+ - pycodestyle -r --ignore E501,E402,E722 *.py cobbler/*.py cobbler/modules/*.py cobbler/web/*.py cobbler/web/templatetags/*.py bin/cobbler* bin/*.py web/cobbler.wsgi
+script: pytest

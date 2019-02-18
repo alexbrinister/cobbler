@@ -1,32 +1,36 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
+from future import standard_library
+standard_library.install_aliases()
 import os
 import sys
 import time
+import logging
 import glob as _glob
 
-from distutils.core import setup, Command
+from builtins import str
+from setuptools import setup
+from setuptools import Command
+from setuptools.command.install import install as _install
+from setuptools import Distribution as _Distribution
+from setuptools.command.build_py import build_py as _build_py
+from setuptools import dep_util
 from distutils.command.build import build as _build
-from distutils.command.install import install as _install
-from distutils.command.build_py import build_py as _build_py
-from distutils import log
-from distutils import dep_util
-from distutils.dist import Distribution as _Distribution
 from configparser import ConfigParser
 
 import codecs
 import unittest
+from coverage import Coverage
 import pwd
 import shutil
 import subprocess
 
-try:
-    import coverage
-except:
-    pass
+from builtins import OSError
 
 VERSION = "2.9.0"
 OUTPUT_DIR = "config"
+
+log = logging.getLogger("setup.py")
 
 
 #####################################################################
@@ -72,18 +76,18 @@ def gen_build_version():
     else:
         cmd = subprocess.Popen([gitloc, "log", "--format=%h%n%ad", "-1"],
                                stdout=subprocess.PIPE)
-        data = cmd.communicate()[0].strip().decode("utf-8")
+        data = cmd.communicate()[0].strip()
         if cmd.returncode == 0:
-            gitstamp, gitdate = data.split("\n")
+            gitstamp, gitdate = data.split(b"\n")
 
     fd = open(os.path.join(OUTPUT_DIR, "version"), "w+")
     config = ConfigParser()
     config.add_section("cobbler")
-    config.set("cobbler", "gitdate", gitdate)
-    config.set("cobbler", "gitstamp", gitstamp)
+    config.set("cobbler", "gitdate", str(gitdate))
+    config.set("cobbler", "gitstamp", str(gitstamp))
     config.set("cobbler", "builddate", builddate)
     config.set("cobbler", "version", VERSION)
-    config.set("cobbler", "version_tuple", str([x for x in VERSION.split(".")]))
+    config.set("cobbler", "version_tuple", str([int(x) for x in VERSION.split(".")]))
     config.write(fd)
     fd.close()
 
@@ -136,8 +140,7 @@ class build_cfg(Command):
         ('install-platbase=', None, "base installation directory for platform-specific files "),
         ('install-purelib=', None, "installation directory for pure Python module distributions"),
         ('install-platlib=', None, "installation directory for non-pure module distributions"),
-        ('install-lib=', None, "installation directory for all module distributions " +
-         "(overrides --install-purelib and --install-platlib)"),
+        ('install-lib=', None, "installation directory for all module distributions " + "(overrides --install-purelib and --install-platlib)"),
         ('install-headers=', None, "installation directory for C/C++ headers"),
         ('install-scripts=', None, "installation directory for Python scripts"),
         ('install-data=', None, "installation directory for data files"),
@@ -221,7 +224,7 @@ class build_cfg(Command):
                 self.configure_one_file(infile, outfile)
 
     def configure_one_file(self, infile, outfile):
-        self.announce("configuring %s" % (infile), log.INFO)
+        log.info("configuring %s" % infile)
         if not self.dry_run:
             # Read the file
             with codecs.open(infile, 'r', 'utf-8') as fh:
@@ -238,7 +241,7 @@ class build_cfg(Command):
             shutil.copymode(infile, outfile)
 
     def substitute_values(self, string, values):
-        for name, val in values.items():
+        for name, val in list(values.items()):
             # print("replacing @@%s@@ with %s" % (name, val))
             string = string.replace("@@%s@@" % (name), val)
         return string
@@ -252,6 +255,7 @@ def has_configure_files(build):
 def has_man_pages(build):
     """Check if the distribution has configuration files to work on."""
     return bool(build.distribution.man_pages)
+
 
 build.sub_commands.extend((
     ('build_man', has_man_pages),
@@ -303,20 +307,20 @@ class build_man(Command):
                 # It is. Configure it
                 self.build_one_file(infile, outfile)
 
-    _COMMAND = 'pod2man --center="%s" --release="" %s | gzip -c > %s'
+    _COMMAND = 'pod2man --center="%s" --release="%s" %s | gzip -c > %s'
 
     def build_one_file(self, infile, outfile):
         man = os.path.splitext(os.path.splitext(os.path.basename(infile))[0])[0]
-        self.announce("building %s manpage" % (man), log.INFO)
+        log.info("building %s manpage" % man)
         if not self.dry_run:
             # Create the output directory if necessary
             outdir = os.path.dirname(outfile)
             if not os.path.exists(outdir):
                 os.makedirs(outdir)
             # Now create the manpage
-            cmd = build_man._COMMAND % ('man', infile, outfile)
+            cmd = build_man._COMMAND % ('man', VERSION, infile, outfile)
             if os.system(cmd):
-                self.announce("Creation of %s manpage failed." % man, log.ERROR)
+                log.error("Creation of %s manpage failed." % man)
                 exit(1)
 
 
@@ -359,21 +363,27 @@ class install(_install):
         # Run the usual stuff.
         _install.run(self)
 
+        # If --root wasn't specified default to /usr/local
+        if self.root is None:
+            self.root = "/usr/local"
+
         # Hand over some directories to the webserver user
         path = os.path.join(self.install_data, 'share/cobbler/web')
         try:
             self.change_owner(path, http_user)
         except KeyError as e:
             # building RPMs in a mock chroot, user 'apache' won't exist
-            log.warn("Error in 'chown apache %s': %s" % (path, e))
+            log.warning("Error in 'chown apache %s': %s" % (path, e))
         if not os.path.abspath(libpath):
             # The next line only works for absolute libpath
             raise Exception("libpath is not absolute.")
-        path = os.path.join(self.root + libpath, 'webui_sessions')
+        # libpath is hardcoded in the code everywhere
+        # therefor cant relocate using self.root
+        path = os.path.join(libpath, 'webui_sessions')
         try:
             self.change_owner(path, http_user)
         except KeyError as e:
-            log.warn("Error in 'chown apache %s': %s" % (path, e))
+            log.warning("Error in 'chown apache %s': %s" % (path, e))
 
 
 #####################################################################
@@ -391,37 +401,24 @@ class test_command(Command):
         pass
 
     def run(self):
-        testfiles = []
-        testdirs = []
-
-        for d in testdirs:
-            testdir = os.path.join(os.getcwd(), "tests", d)
-
-            for t in _glob.glob(os.path.join(testdir, '*.py')):
-                if t.endswith('__init__.py'):
-                    continue
-                testfile = '.'.join(['tests', d,
-                                     os.path.splitext(os.path.basename(t))[0]])
-                testfiles.append(testfile)
-
-        tests = unittest.TestLoader().loadTestsFromNames(testfiles)
+        tests = unittest.TestLoader().discover("tests", pattern="*[t|T]est*.py")
         runner = unittest.TextTestRunner(verbosity=1)
 
-        if coverage:
-            coverage.erase()
-            coverage.start()
+        cov = Coverage()
+        cov.erase()
+        cov.start()
 
         result = runner.run(tests)
 
-        if coverage:
-            coverage.stop()
-        sys.exit(int(bool(len(result.failures) > 0 or
-                          len(result.errors) > 0)))
+        cov.stop()
+        cov.save()
+        cov.html_report(directory="covhtml")
+        sys.exit(int(bool(len(result.failures) > 0 or len(result.errors) > 0)))
+
 
 #####################################################################
 # # state command base class #########################################
 #####################################################################
-
 
 class statebase(Command):
 
@@ -440,13 +437,13 @@ class statebase(Command):
     def _copy(self, frm, to):
         if os.path.isdir(frm):
             to = os.path.join(to, os.path.basename(frm))
-            self.announce("copying %s/ to %s/" % (frm, to), log.DEBUG)
+            log.debug("copying %s/ to %s/" % (frm, to))
             if not self.dry_run:
                 if os.path.exists(to):
                     shutil.rmtree(to)
                 shutil.copytree(frm, to)
         else:
-            self.announce("copying %s to %s" % (frm, os.path.join(to, os.path.basename(frm))), log.DEBUG)
+            log.debug("copying %s to %s" % (frm, os.path.join(to, os.path.basename(frm))))
             if not self.dry_run:
                 shutil.copy2(frm, to)
 
@@ -463,7 +460,7 @@ class restorestate(statebase):
         statebase._copy(self, frm, to)
 
     def run(self):
-        self.announce("restoring the current configuration from %s" % self.statepath, log.INFO)
+        log.info("restoring the current configuration from %s" % self.statepath)
         if not os.path.exists(self.statepath):
             self.warn("%s does not exist. Skipping" % self.statepath)
             return
@@ -492,9 +489,9 @@ class savestate(statebase):
         statebase._copy(self, frm, to)
 
     def run(self):
-        self.announce("backing up the current configuration to %s" % self.statepath, log.INFO)
+        log.info("backing up the current configuration to %s" % self.statepath)
         if os.path.exists(self.statepath):
-            self.announce("deleting existing %s" % self.statepath, log.DEBUG)
+            log.debug("deleting existing %s" % self.statepath)
             if not self.dry_run:
                 shutil.rmtree(self.statepath)
         if not self.dry_run:
@@ -516,16 +513,34 @@ def parse_os_release():
     if os.path.exists(osreleasepath):
         with open(osreleasepath, 'r') as os_release:
             out.update(
-                map(
-                    lambda line: [it.strip('"\n') for it in line.split('=', 1)],
-                    [line for line in os_release if not line.startswith('#') and '=' in line]
-                )
+                [[it.strip('"\n') for it in line.split('=', 1)] for line in [line for line in os_release if not line.startswith('#') and '=' in line]]
             )
     return out
+
+
+def requires(filename):
+    """Returns a list of all pip requirements
+    Source of this function: https://github.com/tomschr/leo/blob/develop/setup.py
+    :param filename: the Pip requirement file (usually 'requirements.txt')
+    :return: list of modules
+    :rtype: list
+    """
+    modules = []
+    with open(filename, 'r') as pipreq:
+        for line in pipreq:
+            line = line.strip()
+            # Checks if line starts with a comment or referencing
+            # external pip requirements file (with '-e'):
+            if line.startswith('#') or line.startswith('-') or not line:
+                continue
+            modules.append(line)
+    return modules
 
 #####################################################################
 # # Actual Setup.py Script ###########################################
 #####################################################################
+
+
 if __name__ == "__main__":
     # # Configurable installation roots for various data files.
 
@@ -539,8 +554,7 @@ if __name__ == "__main__":
     statepath = "/tmp/cobbler_settings/devinstall"
     os_release = parse_os_release()
     suse_release = (
-        os.path.exists("/etc/SuSE-release") or
-        os_release.get('ID_LIKE', '').lower() == 'suse'
+        os.path.exists("/etc/SuSE-release") or os_release.get('ID_LIKE', '').lower() == 'suse'
     )
 
     if suse_release:
@@ -585,10 +599,8 @@ if __name__ == "__main__":
         author_email="cobbler@lists.fedorahosted.org",
         url="https://cobbler.github.io",
         license="GPLv2+",
-        requires=[
-            "mod_python",
-            "cobbler",
-        ],
+        requires=requires("requirements.txt"),
+        tests_require=requires("requirements-test.txt"),
         packages=[
             "cobbler",
             "cobbler/modules",
@@ -629,6 +641,7 @@ if __name__ == "__main__":
             ("share/cobbler/web", glob("web/*.*")),
             ("%s" % webcontent, glob("web/static/*")),
             ("%s" % webimages, glob("web/static/images/*")),
+            ("share/cobbler/bin", glob("scripts/*.sh")),
             ("share/cobbler/web/templates", glob("web/templates/*")),
             ("%swebui_sessions" % libpath, []),
             ("%sloaders" % libpath, []),
@@ -654,6 +667,13 @@ if __name__ == "__main__":
             ("%s" % etcpath, glob("templates/etc/*")),
             ("%siso" % etcpath, glob("templates/iso/*")),
             ("%sboot_loader_conf" % etcpath, glob("templates/boot_loader_conf/*")),
+            ("%sgrub_config" % libpath, glob("config/grub/*")),
+            # ToDo: Find a nice way to copy whole config/grub structure recursively
+            # files
+            ("%sgrub_config/grub" % libpath, glob("config/grub/grub/*")),
+            # dirs
+            ("%sgrub_config/grub/grub/system" % libpath, []),
+            ("%sgrub_config/grub/grub/system_link" % libpath, []),
             ("%sreporting" % etcpath, glob("templates/reporting/*")),
             ("%spower" % etcpath, glob("templates/power/*")),
             # Build empty directories to hold triggers
@@ -714,12 +734,11 @@ if __name__ == "__main__":
             ("%scobbler/distro_mirror/config" % webroot, []),
             ("%scobbler/links" % webroot, []),
             ("%scobbler/misc" % webroot, []),
-            ("%scobbler/svc" % webroot, []),
             ("%scobbler/pub" % webroot, []),
             ("%scobbler/rendered" % webroot, []),
             ("%scobbler/images" % webroot, []),
             # A script that isn't really data, wsgi script
-            ("%scobbler/svc/" % webroot, ["bin/services.py"]),
+            ("%scobbler/svc/" % webroot, ["svc/services.py"]),
             # zone-specific templates directory
             ("%szone_templates" % etcpath, []),
         ],

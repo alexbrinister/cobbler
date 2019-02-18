@@ -23,15 +23,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 02110-1301  USA
 """
 
+from builtins import object
 import os
 import os.path
 
-import clogger
-import module_loader
-import utils
+from . import clogger
+from . import module_loader
+from . import utils
 
 
-class CobblerLiteSync:
+class CobblerLiteSync(object):
     """
     Handles conversion of internal state to the tftpboot tree layout
     """
@@ -95,7 +96,7 @@ class CobblerLiteSync:
         self.sync.tftpgen.make_pxe_menu()
 
     def remove_single_distro(self, name):
-        bootloc = utils.tftpboot_location()
+        bootloc = self.settings.tftpboot_location
         # delete contents of images/$name directory in webdir
         utils.rmtree(os.path.join(self.settings.webdir, "images", name))
         # delete contents of images/$name in tftpboot
@@ -104,7 +105,7 @@ class CobblerLiteSync:
         utils.rmfile(os.path.join(self.settings.webdir, "links", name))
 
     def remove_single_image(self, name):
-        bootloc = utils.tftpboot_location()
+        bootloc = self.settings.tftpboot_location
         utils.rmfile(os.path.join(bootloc, "images2", name))
 
     def add_single_profile(self, name, rebuild_menu=True):
@@ -154,12 +155,11 @@ class CobblerLiteSync:
         self.tftpd.add_single_system(system)
 
     def remove_single_system(self, name):
-        bootloc = utils.tftpboot_location()
-        system_record = self.systems.find(name=name)
+        bootloc = self.settings.tftpboot_location
         # delete contents of autoinsts_sys/$name in webdir
         system_record = self.systems.find(name=name)
 
-        for (name, interface) in system_record.interfaces.iteritems():
-            filename = utils.get_config_filename(system_record, interface=name)
+        for (name, interface) in list(system_record.interfaces.items()):
+            filename = system_record.get_config_filename(interface=name)
             utils.rmfile(os.path.join(bootloc, "pxelinux.cfg", filename))
             utils.rmfile(os.path.join(bootloc, "grub", filename.upper()))

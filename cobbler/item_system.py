@@ -266,7 +266,7 @@ class System(item.Item):
         """
         if self.name == "default":
             return True
-        for (name, x) in self.interfaces.iteritems():
+        for (name, x) in list(self.interfaces.items()):
             mac = x.get("mac_address", None)
             ip = x.get("ip_address", None)
             if ip is not None and not cidr_ok and ip.find("/") != -1:
@@ -660,7 +660,7 @@ class System(item.Item):
         Used by the WUI to modify an interface more-efficiently
         """
 
-        for (key, value) in _dict.iteritems():
+        for (key, value) in list(_dict.items()):
             (field, interface) = key.split("-", 1)
             field = field.replace("_", "").replace("-", "")
 
@@ -741,5 +741,43 @@ class System(item.Item):
 
     def set_serial_baud_rate(self, baud_rate):
         return utils.set_serial_baud_rate(self, baud_rate)
+
+    def get_config_filename(self, interface, loader=None):
+        """
+        The configuration file for each system pxe uses is either
+        a form of the MAC address of the hex version of the IP.  If none
+        of that is available, just use the given name, though the name
+        given will be unsuitable for PXE configuration (For this, check
+        system.is_management_supported()). This same file is used to store
+        system config information in the Apache tree, so it's still relevant.
+
+        :param loader: Bootloader type.
+        :type loader: str
+        :param interface: Name of the interface.
+        :type interface: str
+        """
+
+        if loader is None:
+            loader = self.boot_loader
+
+        if interface not in self.interfaces:
+            return None
+
+        if self.name == "default":
+            if loader == "grub":
+                return None
+            return "default"
+
+        mac = self.get_mac_address(interface)
+        ip = self.get_ip_address(interface)
+        if mac is not None and mac != "":
+            if loader == "grub":
+                return mac.lower()
+            else:
+                return "01-" + "-".join(mac.split(":")).lower()
+        elif ip is not None and ip != "":
+            return utils.get_host_ip(ip)
+        else:
+            return self.name
 
 # EOF

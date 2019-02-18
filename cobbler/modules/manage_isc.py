@@ -21,7 +21,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 02110-1301  USA
 """
 
+from builtins import str
+from builtins import object
 import time
+import copy
 
 import cobbler.templar as templar
 import cobbler.utils as utils
@@ -37,7 +40,7 @@ def register():
     return "manage"
 
 
-class IscManager:
+class IscManager(object):
 
     def what(self):
         return "isc"
@@ -95,12 +98,17 @@ class IscManager:
             distro = profile.get_conceptual_parent()
 
             # if distro is None then the profile is really an image record
-            for (name, interface) in system.interfaces.iteritems():
+            for (name, system_interface) in list(system.interfaces.items()):
 
-                # this is really not a per-interface setting
-                # but we do this to make the templates work
-                # without upgrade
-                interface["gateway"] = system.gateway
+                # We make a copy because we may modify it before adding it to the dhcp_tags
+                # and we don't want to affect the master copy.
+                interface = copy.deepcopy(system_interface)
+
+                if interface["if_gateway"]:
+                    interface["gateway"] = interface["if_gateway"]
+                else:
+                    interface["gateway"] = system.gateway
+
                 mac = interface["mac_address"]
 
                 if interface["interface_type"] in ("bond_slave", "bridge_slave", "bonded_bridge_slave"):
@@ -109,11 +117,13 @@ class IscManager:
                         # Can't write DHCP entry; master interface does not exist
                         continue
 
-                    if system.name not in ding:
-                        ding[system.name] = {interface["interface_master"]: []}
+                    # We may have multiple bonded interfaces, so we need a composite index into ding.
+                    name_master = "%s-%s" % (system.name, interface["interface_master"])
+                    if name_master not in ding:
+                        ding[name_master] = {interface["interface_master"]: []}
 
-                    if len(ding[system.name][interface["interface_master"]]) == 0:
-                        ding[system.name][interface["interface_master"]].append(mac)
+                    if len(ding[name_master][interface["interface_master"]]) == 0:
+                        ding[name_master][interface["interface_master"]].append(mac)
                     else:
                         ignore_macs.append(mac)
 
@@ -123,7 +133,7 @@ class IscManager:
                     host = system.interfaces[interface["interface_master"]]["dns_name"]
 
                     if ip is None or ip == "":
-                        for (nam2, int2) in system.interfaces.iteritems():
+                        for (nam2, int2) in list(system.interfaces.items()):
                             if (nam2.startswith(interface["interface_master"] + ".") and int2["ip_address"] is not None and int2["ip_address"] != ""):
                                     ip = int2["ip_address"]
                                     break
@@ -196,8 +206,8 @@ class IscManager:
 
         # remove macs from redundant slave interfaces from dhcp_tags
         # otherwise you get duplicate ip's in the installer
-        for dt in dhcp_tags.keys():
-            for m in dhcp_tags[dt].keys():
+        for dt in list(dhcp_tags.keys()):
+            for m in list(dhcp_tags[dt].keys()):
                 if m in ignore_macs:
                     del dhcp_tags[dt][m]
 

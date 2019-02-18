@@ -36,6 +36,8 @@ a user against the Pluggable Authentication Modules (PAM) on the system.
 Implemented using ctypes, so no compilation is necessary.
 """
 
+from builtins import str
+from builtins import range
 from ctypes import CDLL, POINTER, Structure, CFUNCTYPE, cast, pointer, sizeof
 from ctypes import c_void_p, c_uint, c_char_p, c_char, c_int
 from ctypes.util import find_library
@@ -89,12 +91,14 @@ class PamResponse(Structure):
     def __repr__(self):
         return "<PamResponse %i '%s'>" % (self.resp_retcode, self.resp)
 
+
 CONV_FUNC = CFUNCTYPE(c_int, c_int, POINTER(POINTER(PamMessage)), POINTER(POINTER(PamResponse)), c_void_p)
 
 
 class PamConv(Structure):
     """wrapper class for pam_conv structure"""
     _fields_ = [("conv", CONV_FUNC), ("appdata_ptr", c_void_p)]
+
 
 PAM_START = LIBPAM.pam_start
 PAM_START.restype = c_int
